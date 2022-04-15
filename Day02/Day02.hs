@@ -1,5 +1,6 @@
 import Data.Sequence
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Except
 import qualified Data.List (filter, groupBy)
 
 puzzleInput :: FilePath
@@ -18,15 +19,19 @@ toOpcode 99 = Finished
 toOpcode a = error $ "Invalid opcode: " ++ show a
 
 
+-- | Raises an error on failure.
+elementAtUnsafe :: Intcode -> Int -> String -> Int 
+elementAtUnsafe intcode index' errorMessage =
+    case intcode !? index' of
+        Nothing -> error errorMessage
+        Just value -> value
+
+
 -- | Gets a value at the position described by the intcode at position x.
 offset :: Int -> Intcode -> Int
 offset x intcode =
-    case intcode !? x of
-        Nothing -> error $ "Looked for a value at " ++ show x ++ " but intcode too short."
-        Just n ->
-            case intcode !? n of
-                Nothing -> error $ "Looked for actual value at position " ++ show n ++ ", which was pointed to by value-position at " ++ show x ++ ", but the intcode is too short."
-                Just value -> value
+    let reference = elementAtUnsafe intcode x $ "Looked for a value at " ++ show x ++ " but intcode too short."
+    in elementAtUnsafe intcode reference $ "Looked for actual value at position " ++ show reference ++ ", which was pointed to by value-position at " ++ show x ++ ", but the intcode is too short."
 
 
 -- more elegant if index first then the intcode
@@ -35,14 +40,10 @@ offset x intcode =
 processIntcode :: Int -> Intcode -> Maybe Intcode
 processIntcode index' intcode = do
     let
-        opcode = case intcode !? index' of
-          Nothing -> error $ "Looked for opcode at " ++ show index' ++ " but intcode too short."
-          Just n -> toOpcode n
+        opcode = toOpcode . elementAtUnsafe intcode index' $ "Looked for opcode at " ++ show index' ++ " but intcode too short."
         firstVal = offset (index' + 1) intcode
         secondVal = offset (index' + 2) intcode
-        putPosition = case intcode !? (index' + 3) of
-          Nothing -> error $ "Could not get position " ++ show (index' + 3) ++ " (intcode too short)"
-          Just n -> n
+        putPosition = elementAtUnsafe intcode (index' + 3) $ "Could not get position " ++ show (index' + 3) ++ " (intcode too short)"
     case opcode of
       -- FIXME: duplicate code...
       Add -> processIntcode (index' + 4) (update putPosition (firstVal + secondVal) intcode)
